@@ -2,6 +2,8 @@
 
 Quick AI search for [Omarchy](https://omarchy.org/). Press a key, ask, keep working.
 
+![omaSeek: open, ask, read the answer, start a new chat](media/demo.gif)
+
 omaSeek opens a glass overlay over whatever you're doing, sends your question to Claude (or your default agent: Codex, OpenCode, Gemini, Grok, Crush, Pi), and shows the answer right there, formatted. Follow up in the same chat, reopen a recent one, paste an image, and approve the commands Claude wants to run.
 
 **Plugin id:** `io.github.5h3rd1l.omaseek` · **License:** MIT · **Version:** 1.0.0
@@ -20,6 +22,17 @@ Based on [omAsk](https://github.com/shabdar/omarchy-ask) by Ali Shabdar.
 - **Short or detailed answers**, a model picker and an agent picker.
 - **Liquid-glass look** that follows your Omarchy theme.
 - **Ctrl+H** shows every shortcut.
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![A formatted answer](media/answer.png) | ![Recent chats under the input](media/recent.png) |
+| **Formatted answers** with coloured inline code | **Recent chats** when no chat is open |
+| ![Safe mode asking before a command](media/approve.png) | ![A tool step and its answer](media/tools.png) |
+| **Safe mode**: Allow, Always in this chat, or Deny | **Tool steps**: click to see the command and its output |
+
+![Every shortcut (Ctrl+H)](media/help.png)
 
 ## Install
 
