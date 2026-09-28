@@ -1,19 +1,19 @@
 #!/usr/bin/python3
-"""One-shot overlay answer for omaSeek.
+"""One-shot overlay answer for omaSearch.
 
 Prints a single JSON object on stdout (capped), then exits.
 
   ask.py --info    metadata for `omarchy default agent`
   ask.py --ask     short answer; prompt on stdin (NUL- or EOF-terminated)
   ask.py --list    installed agents the overlay's logo menu offers
-  ask.py --select <id>  remember <id> as omaSeek's agent (until changed again)
+  ask.py --select <id>  remember <id> as omaSearch's agent (until changed again)
   ask.py --serve [--session <id>]  keep one Claude process warm for a chat:
                    {"prompt": "..."} lines in on stdin; JSON event lines out
                    (ready / delta / done / exit), streamed as Claude writes
   ask.py --models <agent>              models the model menu offers for <agent>
   ask.py --select-model <agent> <model>  remember <model> for <agent> ("" = CLI default)
   ask.py --title              short title for a chat; {"q", "a"} JSON on stdin
-  ask.py --recent-claude       omaSeek's recent Claude chats (its print-mode sessions in $HOME)
+  ask.py --recent-claude       omaSearch's recent Claude chats (its print-mode sessions in $HOME)
   ask.py --load-claude <id>    one of those chats rebuilt as overlay rows, to reopen it
   --agent <id>     (before --info/--ask) use this agent for this call only
   --session <id>   (before --ask) continue that Claude/Codex/OpenCode session;
@@ -114,11 +114,11 @@ SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 # Commands (installs, updates) can take a while.
 ASK_TIMEOUT_SEC = 600
 AGENT_FILE = os.path.expanduser("~/.config/omarchy/defaults/agent")
-# omaSeek's own choice from the logo menu; wins over the system default.
-SELECTED_FILE = os.path.expanduser("~/.local/state/omaseek/agent")
+# omaSearch's own choice from the logo menu; wins over the system default.
+SELECTED_FILE = os.path.expanduser("~/.local/state/omasearch/agent")
 # Model menu choice per agent, e.g. {"claude": "sonnet"}; missing = the CLI's default.
-MODELS_FILE = os.path.expanduser("~/.local/state/omaseek/models.json")
-MODELS_CACHE_DIR = os.path.expanduser("~/.cache/omaseek")
+MODELS_FILE = os.path.expanduser("~/.local/state/omasearch/models.json")
+MODELS_CACHE_DIR = os.path.expanduser("~/.cache/omasearch")
 MODELS_CACHE_SEC = 24 * 3600
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$")
 # Claude Code resolves these aliases to the latest model of each family.
@@ -210,7 +210,7 @@ def wrapped_prompt(prompt: str) -> str:
 
 def login_argv(argv: list[str]) -> list[str]:
     """Run an allowlisted CLI via a constant bash -c; prompt stays on stdin."""
-    return [*BASH, "-c", 'exec "$1" "${@:2}"', "omaseek", *argv]
+    return [*BASH, "-c", 'exec "$1" "${@:2}"', "omasearch", *argv]
 
 
 def binary_on_path(binary: str) -> bool:
@@ -218,7 +218,7 @@ def binary_on_path(binary: str) -> bool:
     if not binary or not AGENT_RE.fullmatch(binary):
         return False
     try:
-        proc = run_bounded([*BASH, "-c", 'command -v -- "$1"', "omaseek", binary], max_bytes=4096, timeout=8)
+        proc = run_bounded([*BASH, "-c", 'command -v -- "$1"', "omasearch", binary], max_bytes=4096, timeout=8)
     except (ValueError, OSError):
         return False
     return proc.returncode == 0 and bool((proc.stdout or b"").strip())
@@ -554,7 +554,7 @@ def tool_output_text(content) -> str:
 
 # Images the overlay attaches ({"prompt", "image"}): pasted with Ctrl+V and
 # saved in its private folder; read once, then deleted.
-SHOTS_DIR = os.path.expanduser("~/.cache/omaseek/shots")
+SHOTS_DIR = os.path.expanduser("~/.cache/omasearch/shots")
 MAX_IMAGE_BYTES = 5 * 1024 * 1024   # Claude's per-image limit
 IMAGE_EXTS = (".png", ".jpg", ".webp", ".gif")
 
@@ -645,7 +645,7 @@ def serve(session: str) -> None:
         if tool_input is None:
             return
         result = ({"behavior": "allow", "updatedInput": tool_input} if allow
-                  else {"behavior": "deny", "message": "The user denied this in the omaSeek overlay."})
+                  else {"behavior": "deny", "message": "The user denied this in the omaSearch overlay."})
         send({"type": "control_response",
               "response": {"subtype": "success", "request_id": request_id, "response": result}})
 
@@ -666,7 +666,7 @@ def serve(session: str) -> None:
                 req = ev.get("request") or {}
                 if req.get("subtype") != "can_use_tool":
                     send({"type": "control_response", "response": {
-                        "subtype": "error", "request_id": request_id, "error": "Not supported by omaSeek."}})
+                        "subtype": "error", "request_id": request_id, "error": "Not supported by omaSearch."}})
                     continue
                 tool_input = req.get("input") if isinstance(req.get("input"), dict) else {}
                 pending[request_id] = tool_input
@@ -763,7 +763,7 @@ WRAP_MARK = "\n\nReply to the user's new message: "
 
 
 def claude_project_dir() -> str:
-    """Where Claude keeps the sessions omaSeek starts (they all run in $HOME)."""
+    """Where Claude keeps the sessions omaSearch starts (they all run in $HOME)."""
     return os.path.join(CLAUDE_PROJECTS, re.sub(r"[^A-Za-z0-9]", "-", os.path.expanduser("~")))
 
 
@@ -805,7 +805,7 @@ def user_text(content) -> str:
 
 
 def recent_claude() -> list[dict]:
-    """omaSeek's Claude chats, newest first: the print-mode (sdk-cli) sessions in $HOME.
+    """omaSearch's Claude chats, newest first: the print-mode (sdk-cli) sessions in $HOME.
 
     Terminal sessions there are "cli" and are left out.
     """

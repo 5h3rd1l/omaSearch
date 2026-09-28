@@ -1,12 +1,12 @@
 # Architecture
 
-omaSeek is a `keepLoaded` Omarchy overlay (plugin id `io.github.5h3rd1l.omaseek`). The shell summons `Overlay.qml`, which never talks to an AI API itself: it runs helper scripts and paints what they print.
+omaSearch is a `keepLoaded` Omarchy overlay (plugin id `io.github.5h3rd1l.omasearch`). The shell summons `Overlay.qml`, which never talks to an AI API itself: it runs helper scripts and paints what they print.
 
 ```
-omarchy-shell shell toggle io.github.5h3rd1l.omaseek '{}'
+omarchy-shell shell toggle io.github.5h3rd1l.omasearch '{}'
         │
         ▼
- Overlay.qml            layer-shell overlay (namespace "omaseek")
+ Overlay.qml            layer-shell overlay (namespace "omasearch")
    │
    ├─ Claude (warm)     python3 ask.py --serve [--session id] [--detailed] [--safe]
    │                      in:  {"prompt", "image"?} and {"approve", "allow", "always"} lines
@@ -31,9 +31,9 @@ The UI and all state. `open` / `close` / `toggle` / `dismiss` are the IPC surfac
 | `ChatText` | Read-only, selectable text; selecting copies, a click copies the whole piece |
 | `history`, `claudeRecent` | Saved chats (`history.json`) merged with Claude's own sessions into the recent list |
 | `GlassSheen` | The glass finish (sheen and rim) on the card, pill, menus and toast |
-| `pasteProc` | Ctrl+V: saves a clipboard image into `~/.cache/omaseek/shots` for the next message |
+| `pasteProc` | Ctrl+V: saves a clipboard image into `~/.cache/omasearch/shots` for the next message |
 
-State lives in `~/.local/state/omaseek/` (0700): `history.json` (chats, pins, hidden sessions, earlier questions), `settings.json`, `position.json`, plus `agent` and `models.json` written by `ask.py`.
+State lives in `~/.local/state/omasearch/` (0700): `history.json` (chats, pins, hidden sessions, earlier questions), `settings.json`, `position.json`, plus `agent` and `models.json` written by `ask.py`.
 
 ## AskModel.js
 
@@ -45,7 +45,7 @@ One JSON object per call on stdout (`--serve` streams JSON lines instead). The q
 
 - `--serve` drives `claude -p --input-format stream-json --output-format stream-json` and turns its events into the overlay's small event set. With `--safe` it passes `--permission-prompt-tool stdio`; each `can_use_tool` request becomes an `approve` event and waits for the overlay's answer. Images must come from the private shots folder, are checked by their first bytes (PNG, JPEG, WebP, GIF), and are deleted after reading.
 - `--ask` runs the agent CLI once. Safe mode never bypasses approvals: Claude denies anything that would prompt, Codex runs read-only, OpenCode uses its plan agent.
-- `--recent-claude` lists omaSeek's own Claude chats: print-mode (`sdk-cli`) sessions in the `$HOME` project folder, reading only the start of each file. `--load-claude` rebuilds one as overlay rows.
+- `--recent-claude` lists omaSearch's own Claude chats: print-mode (`sdk-cli`) sessions in the `$HOME` project folder, reading only the start of each file. `--load-claude` rebuilds one as overlay rows.
 - `--title` names a chat with one Haiku call (`--no-session-persistence`).
 
 ## open_chat.py

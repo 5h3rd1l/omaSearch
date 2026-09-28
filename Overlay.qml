@@ -7,7 +7,7 @@ import qs.Commons
 import qs.Ui
 import "AskModel.js" as AskModel
 
-// omaSeek overlay. IPC: open / close / toggle / dismiss.
+// omaSearch overlay. IPC: open / close / toggle / dismiss.
 // Enter → ask.py (short on-screen answer). Ctrl+Enter → Google search in the
 // default browser. The key hints and chat actions sit in a bar under the pill.
 // After an answer, typing again replies in the same chat: Claude, Codex and
@@ -18,7 +18,7 @@ import "AskModel.js" as AskModel
 // in, drag to move (remembered). The chat survives closing (Esc) until New ^N;
 // an answer that lands while hidden raises a notification.
 // Claude answers stream from a warm process (ask.py --serve) that starts when
-// omaSeek opens and serves the whole chat, so replies begin at once like the
+// omaSearch opens and serves the whole chat, so replies begin at once like the
 // terminal. Other agents run one ask.py --ask per message.
 // Click the agent logo to pick from the installed agents; the pick is saved by
 // ask.py --select and used until it is changed again. The model label left of
@@ -242,11 +242,11 @@ Item {
   property bool copied: false
   property double askStartedAt: 0
   property int elapsedMs: 0
-  readonly property string positionPath: Quickshell.env("HOME") + "/.local/state/omaseek/position.json"
+  readonly property string positionPath: Quickshell.env("HOME") + "/.local/state/omasearch/position.json"
   // Recent chats, listed above the pill while no chat is open. Saved chats
-  // live in history.json (the folder is private to you, 0700); omaSeek's Claude
+  // live in history.json (the folder is private to you, 0700); omaSearch's Claude
   // chats are also read from Claude's own session files.
-  readonly property string historyPath: Quickshell.env("HOME") + "/.local/state/omaseek/history.json"
+  readonly property string historyPath: Quickshell.env("HOME") + "/.local/state/omasearch/history.json"
   readonly property int maxHistory: 25
   property var history: []      // newest first: { id, title, agent, updated, sessions, turns, rows }
   property string chatId: ""    // this chat's entry in `history`
@@ -292,7 +292,7 @@ Item {
       ["Ctrl+N", "New chat"],
       ["Ctrl+E", "Continue this chat in the terminal"],
       ["Page Up / Down", "Scroll the chat"],
-      ["Esc", "Close a menu, then omaSeek (the chat stays until New)"]
+      ["Esc", "Close a menu, then omaSearch (the chat stays until New)"]
     ] },
     { title: "Images and clipboard", items: [
       ["Ctrl+V", "Paste text, or attach a copied image (Claude, max 5 MB)"],
@@ -320,7 +320,7 @@ Item {
 
   // Answer length and safe mode (Claude asks before running commands),
   // remembered in settings.json. Safe mode is on unless you turn it off.
-  readonly property string settingsPath: Quickshell.env("HOME") + "/.local/state/omaseek/settings.json"
+  readonly property string settingsPath: Quickshell.env("HOME") + "/.local/state/omasearch/settings.json"
   property bool detailed: false
   property bool safeMode: true
   readonly property var modeArgs: (root.detailed ? ["--detailed"] : []).concat(root.safeMode ? ["--safe"] : [])
@@ -328,7 +328,7 @@ Item {
 
   // An image for the next message (pasted with Ctrl+V; Claude only). It lives
   // in a private cache folder and is deleted once sent.
-  readonly property string shotsDir: Quickshell.env("HOME") + "/.cache/omaseek/shots"
+  readonly property string shotsDir: Quickshell.env("HOME") + "/.cache/omasearch/shots"
   property string attachImage: ""
   property string pasteBuf: ""
 
@@ -390,7 +390,7 @@ Item {
   readonly property int logoSize: Math.max(Style.space(22), Style.font.heading)
   readonly property string pluginDir: (manifest && manifest.__sourceDir)
     ? String(manifest.__sourceDir)
-    : (Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.5h3rd1l.omaseek")
+    : (Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.5h3rd1l.omasearch")
   readonly property string askScript: pluginDir + "/ask.py"
   readonly property string agentFilePath: Quickshell.env("HOME") + "/.config/omarchy/defaults/agent"
   readonly property int maxPrompt: 2000
@@ -608,7 +608,7 @@ Item {
   }
 
   function refreshRecent() {
-    // Re-read omaSeek's Claude chats (quick: only the start of each file).
+    // Re-read omaSearch's Claude chats (quick: only the start of each file).
     root.recentNow = Date.now()
     if (recentProc.running) return
     root.recentBuf = ""
@@ -748,7 +748,7 @@ Item {
     root.streamText = ""
     root.recountApprovals()
     if (!root.opened)
-      Quickshell.execDetached(["omarchy", "notification", "send", "omaSeek", "Claude wants to run: " + AskModel.clip(text, 120)])
+      Quickshell.execDetached(["omarchy", "notification", "send", "omaSearch", "Claude wants to run: " + AskModel.clip(text, 120)])
   }
 
   function decide(index, allow, always) {
@@ -912,7 +912,7 @@ Item {
     // Hide the overlay and notify omarchy-shell so IPC state stays in sync.
     root.close()
     if (root.shell && typeof root.shell.hide === "function")
-      root.shell.hide((root.manifest && root.manifest.id) || "io.github.5h3rd1l.omaseek")
+      root.shell.hide((root.manifest && root.manifest.id) || "io.github.5h3rd1l.omasearch")
   }
 
   function toggle() {
@@ -1147,10 +1147,10 @@ Item {
   }
 
   function notifyDone() {
-    // An answer finished while omaSeek was hidden.
+    // An answer finished while omaSearch was hidden.
     var last = root.turns.length ? root.turns[root.turns.length - 1] : null
     var text = last ? (last.a || last.error) : ""
-    if (text) Quickshell.execDetached(["omarchy", "notification", "send", "omaSeek", AskModel.clip(text, 140)])
+    if (text) Quickshell.execDetached(["omarchy", "notification", "send", "omaSearch", AskModel.clip(text, 140)])
   }
 
   function copyText(value) {
@@ -1192,11 +1192,11 @@ Item {
       : agent === "opencode" ? ["opencode", "-s", sid]
       : []
     if (!sid || !cmd.length) return
-    // Hand the session over: the terminal owns it now; omaSeek resumes it later.
+    // Hand the session over: the terminal owns it now; omaSearch resumes it later.
     if (agent === "claude") root.stopServe()
     var home = Quickshell.env("HOME")
     Quickshell.execDetached(["xdg-terminal-exec", "--dir=" + home, "--",
-      "/usr/bin/bash", "-lc", 'exec "$@"', "omaseek"].concat(cmd))
+      "/usr/bin/bash", "-lc", 'exec "$@"', "omasearch"].concat(cmd))
     root.dismiss()
   }
 
@@ -1535,7 +1535,7 @@ Item {
       + '  case "$e" in png|jpg|webp|gif) if [ -f "$p" ]; then f="$d/shot-$(date +%s%N).$e"; cp -- "$p" "$f" && save "$f"; fi;; esac; '
       + 'fi; '
       + 'echo TEXT',
-      "omaseek", root.shotsDir]
+      "omasearch", root.shotsDir]
     stdout: SplitParser {
       splitMarker: ""
       onRead: function(chunk) { if (root.pasteBuf.length < 4096) root.pasteBuf += chunk }
@@ -1738,7 +1738,7 @@ Item {
   Component.onCompleted: {
     // Chat history and settings live here: private to you (0700).
     Quickshell.execDetached(["/usr/bin/bash", "--noprofile", "--norc", "-c", 'mkdir -p -m 700 "$1" && chmod 700 "$1"',
-      "omaseek", Quickshell.env("HOME") + "/.local/state/omaseek"])
+      "omasearch", Quickshell.env("HOME") + "/.local/state/omasearch"])
     root.refreshAgent()
     root.refreshAgents()
   }
@@ -1759,7 +1759,7 @@ Item {
     visible: root.opened
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "omaseek"
+    WlrLayershell.namespace: "omasearch"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
@@ -1805,7 +1805,7 @@ Item {
     Rectangle {
       anchors.fill: parent
       color: Qt.rgba(Color.menu.scrim.r, Color.menu.scrim.g, Color.menu.scrim.b, 1)
-      // Below omaseek's blur cutoff (ignore_alpha 0.45), so the backdrop stays sharp.
+      // Below omasearch's blur cutoff (ignore_alpha 0.45), so the backdrop stays sharp.
       opacity: root.opened ? 0.4 : 0
     }
 
@@ -1872,7 +1872,7 @@ Item {
             spacing: Style.space(8)
 
             Text {
-              text: root.provider && root.provider.name ? root.provider.name : "omaSeek"
+              text: root.provider && root.provider.name ? root.provider.name : "omaSearch"
               color: Color.menu.text
               opacity: 0.86
               font.family: root.fontFamily

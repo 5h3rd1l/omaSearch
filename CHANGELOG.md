@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.0.0 — omaSeek
+## 1.0.0 — omaSearch
 
-First release as omaSeek, based on omAsk 1.0.5 by Ali Shabdar.
+First release as omaSearch, based on omAsk 1.0.5 by Ali Shabdar.
 
 - Chat in the overlay: follow-ups continue the same session; Claude answers stream from a warm process
 - Markdown answers with syntax-coloured code, a Copy button and clickable links

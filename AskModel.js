@@ -388,7 +388,7 @@ function filterRecent(chats, query) {
 }
 
 function mergeRecent(history, claude, hidden, pinned, max) {
-  // One recent list, newest first: omaSeek's saved chats plus its Claude chats
+  // One recent list, newest first: omaSearch's saved chats plus its Claude chats
   // read from Claude's own session files (so older chats, and ones continued
   // in the terminal, show up too). A session that is also a saved chat shows
   // once; when Claude's copy is newer it is reopened from there. Hidden

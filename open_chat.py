@@ -71,7 +71,7 @@ def notify(title: str, body: str) -> None:
         return
     try:
         run_bounded(
-            [NOTIFY, "-a", "omaSeek", "--", plain(title, 80), plain(body, 160)],
+            [NOTIFY, "-a", "omaSearch", "--", plain(title, 80), plain(body, 160)],
             max_bytes=4096,
             timeout=3,
         )
@@ -334,9 +334,9 @@ def main(argv: list[str]) -> int:
     if not AGENT_RE.fullmatch(agent) or agent in (".", ".."):
         agent = ""
     url = chat_url(agent, packet)
-    title = agent[:1].upper() + agent[1:] if agent else "omaSeek"
+    title = agent[:1].upper() + agent[1:] if agent else "omaSearch"
     if not packet or not url or "?" not in url:
-        notify("omaSeek", "Nothing to continue in the browser.")
+        notify("omaSearch", "Nothing to continue in the browser.")
         return 0
     notify(f"Opening {title}", "Continuing in the browser.")
 
@@ -346,7 +346,7 @@ def main(argv: list[str]) -> int:
     launch("about:blank")
     addr = pick_chromium(old)
     if not addr:
-        notify("omaSeek", "Could not find a Chromium window.")
+        notify("omaSearch", "Could not find a Chromium window.")
         return 0
     force_url_in_window(addr, url, confirm_send=agent in CONFIRM_SEND)
     return 0
