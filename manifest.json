@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.5h3rd1l.omaseek",
+  "name": "omaSeek",
+  "version": "1.0.0",
+  "author": "Rubas Ali",
+  "license": "MIT",
+  "homepage": "https://github.com/5h3rd1l/omaSeek",
+  "description": "Quick AI search for Omarchy: one key opens an overlay to ask Claude (or your default agent) from anywhere, with formatted answers, commands you approve, pasted images and recent chats.",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Overlay.qml"
+  }
+}
