@@ -6,7 +6,7 @@
   "author": "Rubas Ali",
   "license": "MIT",
   "homepage": "https://github.com/5h3rd1l/omaSeek",
-  "description": "Quick AI search for Omarchy: one key opens an overlay to ask Claude (or your default agent) from anywhere, with formatted answers, commands you approve, pasted images and recent chats.",
+  "description": "Quick AI search for Omarchy: one key opens an overlay where Enter asks Claude (or your default agent) and Ctrl+Enter searches Google in your default browser. Formatted answers, commands you approve, pasted images and recent chats.",
   "kinds": [
     "overlay"
   ],

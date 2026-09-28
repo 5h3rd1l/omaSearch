@@ -2,6 +2,11 @@
 
 Quick AI search for [Omarchy](https://omarchy.org/). Press a key, ask, keep working.
 
+> **One box, two ways to seek.** Type your question, then:
+>
+> - **Enter** asks your AI agent (Claude, Codex, OpenCode…) and shows the answer right there.
+> - **Ctrl+Enter** searches Google for it in your default browser.
+
 ![omaSeek: open, ask, read the answer, start a new chat](media/demo.gif)
 
 omaSeek opens a glass overlay over whatever you're doing, sends your question to Claude (or your default agent: Codex, OpenCode, Gemini, Grok, Crush, Pi), and shows the answer right there, formatted. Follow up in the same chat, reopen a recent one, paste an image, and approve the commands Claude wants to run.
@@ -12,6 +17,7 @@ Based on [omAsk](https://github.com/shabdar/omarchy-ask) by Ali Shabdar.
 
 ## Features
 
+- **Ask or Google, same box.** Enter sends the question to your agent; Ctrl+Enter searches Google in your default browser instead.
 - **Fast answers.** Claude answers stream in from a process that starts the moment omaSeek opens, so replies begin at once. Follow-ups continue the same Claude session.
 - **Readable answers.** Paragraphs, lists, tables, headings, syntax-coloured code blocks with a Copy button, and links that open in your browser.
 - **See what it ran.** When Claude runs commands, click the step to see each command and its output.
