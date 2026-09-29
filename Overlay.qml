@@ -107,6 +107,8 @@ Item {
 
     property real radius: 0
     property real strength: 1.0
+    // Colour of the sheen and rim: white, or violet in a temporary chat.
+    property color tint: "white"
 
     anchors.fill: parent
 
@@ -114,8 +116,8 @@ Item {
       anchors.fill: parent
       radius: glass.radius
       gradient: Gradient {
-        GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.075 * glass.strength) }
-        GradientStop { position: 0.42; color: Qt.rgba(1, 1, 1, 0.0) }
+        GradientStop { position: 0.0; color: Qt.rgba(glass.tint.r, glass.tint.g, glass.tint.b, 0.075 * glass.strength) }
+        GradientStop { position: 0.42; color: Qt.rgba(glass.tint.r, glass.tint.g, glass.tint.b, 0.0) }
       }
     }
 
@@ -124,7 +126,7 @@ Item {
       radius: glass.radius
       color: "transparent"
       border.width: 1
-      border.color: Qt.rgba(1, 1, 1, 0.08 * glass.strength)
+      border.color: Qt.rgba(glass.tint.r, glass.tint.g, glass.tint.b, 0.08 * glass.strength)
     }
 
     Rectangle {
@@ -132,7 +134,7 @@ Item {
       radius: glass.radius
       color: "transparent"
       border.width: 1
-      border.color: Qt.rgba(1, 1, 1, Math.min(0.9, 0.4 * glass.strength))
+      border.color: Qt.rgba(glass.tint.r, glass.tint.g, glass.tint.b, Math.min(0.9, 0.4 * glass.strength))
       layer.enabled: true
       layer.effect: MultiEffect {
         maskEnabled: true
@@ -281,6 +283,16 @@ Item {
   // Ctrl+I: a temporary chat. Nothing about it is kept: no recent-chats entry,
   // no title, no question history, and Claude / Codex save no session.
   property bool tempChat: false
+  // Temporary chats get their own look, like a private browser window: a
+  // violet tint on the glass, a violet rim and backdrop, lavender labels.
+  // Light themes get a pale lavender version so dark text stays readable.
+  readonly property bool lightTheme: root.colorLuminance(Color.menu.background) >= 0.5
+  readonly property color tempAccent: root.lightTheme ? "#6a4fc9" : "#b69cff"
+  readonly property color surfaceTint: root.tempChat ? (root.lightTheme ? "#ece6ff" : "#1b1430")
+                                                     : Color.menu.background
+  readonly property color glassTint: root.tempChat ? root.tempAccent : "white"
+  readonly property color scrimTint: root.tempChat ? (root.lightTheme ? "#d9d0f5" : "#0d0818")
+                                                   : Color.menu.scrim
   // A short confirmation that pops up over the pill when a shortcut (or a
   // switch, a copy...) does something; StyledText, so words can be tinted.
   property string toastText: ""
@@ -1166,7 +1178,7 @@ Item {
     root.elapsedMs = 0
     root.followTail = true
     if (!on) root.refreshRecent()
-    root.toast(on ? '<font color="' + String(Color.accent) + '">\uf21b</font>  Temporary chat \u00b7 nothing is saved'
+    root.toast(on ? '<font color="' + String(root.tempAccent) + '">\uf21b</font>  Temporary chat \u00b7 nothing is saved'
                   : "Temporary chat ended")
     promptField.forceActiveFocus()
   }
@@ -1836,7 +1848,11 @@ Item {
 
     Rectangle {
       anchors.fill: parent
-      color: Qt.rgba(Color.menu.scrim.r, Color.menu.scrim.g, Color.menu.scrim.b, 1)
+      color: Qt.rgba(root.scrimTint.r, root.scrimTint.g, root.scrimTint.b, 1)
+
+      Behavior on color {
+        ColorAnimation { duration: 260 }
+      }
       // Below omasearch's blur cutoff (ignore_alpha 0.45), so the backdrop stays sharp.
       opacity: root.opened ? 0.4 : 0
     }
@@ -1860,7 +1876,12 @@ Item {
       height: panel.cardTarget
       radius: Style.space(20)
       // Glass: a translucent tint the compositor blurs behind.
-      color: Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.55)
+      color: Qt.rgba(root.surfaceTint.r, root.surfaceTint.g, root.surfaceTint.b, 0.55)
+
+      Behavior on color {
+        ColorAnimation { duration: 260 }
+      }
+
       borderSpec: Border.none()
       padding: Style.space(14)
       // Hidden while the help panel is open, so its text reads cleanly.
@@ -1869,6 +1890,7 @@ Item {
 
       GlassSheen {
         radius: card.radius
+        tint: root.glassTint
       }
 
       Behavior on height {
@@ -1943,7 +1965,7 @@ Item {
             Text {
               visible: root.tempChat
               text: "\uf21b  Temporary"
-              color: Color.accent
+              color: root.tempAccent
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
             }
@@ -2610,7 +2632,12 @@ Item {
       radius: Math.min(height / 2, Style.space(38))
       // Glass: a translucent tint the compositor blurs behind; the rim
       // brightens while you type.
-      color: Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.55)
+      color: Qt.rgba(root.surfaceTint.r, root.surfaceTint.g, root.surfaceTint.b, 0.55)
+
+      Behavior on color {
+        ColorAnimation { duration: 260 }
+      }
+
       borderSpec: Border.none()
       padding: Style.space(4)
       scale: root.opened ? 1 : 0.96
@@ -2626,6 +2653,7 @@ Item {
 
       GlassSheen {
         radius: pill.radius
+        tint: root.glassTint
         strength: promptField.activeFocus ? 1.35 : 1.0
 
         Behavior on strength {
@@ -2896,8 +2924,8 @@ Item {
             text: root.tempChat
               ? (panel.chatting ? "Follow up (temporary)…" : "Temporary chat: nothing is saved")
               : (panel.chatting ? "Follow up…" : root.placeholder)
-            color: Color.menu.text
-            opacity: 0.44
+            color: root.tempChat ? root.tempAccent : Color.menu.text
+            opacity: root.tempChat ? 0.7 : 0.44
             font.family: root.fontFamily
             font.pixelSize: Style.font.heading
             verticalAlignment: Text.AlignVCenter
@@ -3075,7 +3103,7 @@ Item {
           tooltipText: "Ctrl+I \u2014 a chat that isn't saved anywhere"
           selected: root.tempChat
           fontSize: Style.font.caption
-          foreground: root.tempChat ? Color.accent : root.note
+          foreground: root.tempChat ? root.tempAccent : root.note
           horizontalPadding: Style.space(7)
           verticalPadding: Style.space(3)
           onClicked: root.toggleTemp()
@@ -3165,7 +3193,12 @@ Item {
         ? (toastPill.roomBelow ? toastPill.belowY : toastPill.aboveY)
         : (toastPill.aboveY >= Style.space(8) ? toastPill.aboveY : toastPill.belowY)
       radius: height / 2
-      color: Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.82)
+      color: Qt.rgba(root.surfaceTint.r, root.surfaceTint.g, root.surfaceTint.b, 0.82)
+
+      Behavior on color {
+        ColorAnimation { duration: 260 }
+      }
+
       opacity: toastPill.shown ? 1 : 0
       scale: toastPill.shown ? 1 : 0.9
       visible: opacity > 0
@@ -3180,6 +3213,7 @@ Item {
 
       GlassSheen {
         radius: toastPill.radius
+        tint: root.glassTint
         strength: 1.3
       }
 
@@ -3556,7 +3590,12 @@ Item {
       x: pill.x + Style.space(6)
       y: pill.y - panel.gap - height
       radius: Style.space(18)
-      color: Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.93)
+      color: Qt.rgba(root.surfaceTint.r, root.surfaceTint.g, root.surfaceTint.b, 0.93)
+
+      Behavior on color {
+        ColorAnimation { duration: 260 }
+      }
+
       borderSpec: Border.none()
       padding: Style.space(6)
       transformOrigin: Item.BottomLeft
@@ -3574,6 +3613,7 @@ Item {
 
       GlassSheen {
         radius: agentMenu.radius
+        tint: root.glassTint
       }
 
       MouseArea { anchors.fill: parent }
@@ -3677,7 +3717,12 @@ Item {
       x: pill.x + pill.width - width - Style.space(6)
       y: pill.y - panel.gap - height
       radius: Style.space(18)
-      color: Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.93)
+      color: Qt.rgba(root.surfaceTint.r, root.surfaceTint.g, root.surfaceTint.b, 0.93)
+
+      Behavior on color {
+        ColorAnimation { duration: 260 }
+      }
+
       borderSpec: Border.none()
       padding: Style.space(6)
       transformOrigin: Item.BottomRight
@@ -3695,6 +3740,7 @@ Item {
 
       GlassSheen {
         radius: modelMenu.radius
+        tint: root.glassTint
       }
 
       MouseArea { anchors.fill: parent }
@@ -3811,7 +3857,12 @@ Item {
       x: pill.x
       y: Math.round((panel.height - height) / 2)
       radius: Style.space(20)
-      color: Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.82)
+      color: Qt.rgba(root.surfaceTint.r, root.surfaceTint.g, root.surfaceTint.b, 0.82)
+
+      Behavior on color {
+        ColorAnimation { duration: 260 }
+      }
+
       borderSpec: Border.none()
       padding: Style.space(16)
       transformOrigin: Item.Center
@@ -3829,6 +3880,7 @@ Item {
 
       GlassSheen {
         radius: helpPanel.radius
+        tint: root.glassTint
       }
 
       MouseArea { anchors.fill: parent }

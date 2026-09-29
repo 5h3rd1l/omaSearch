@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Ctrl+I opens a temporary chat: nothing is saved (no recent-chats entry, title or question history), and Claude / Codex keep no session on disk
+- Ctrl+I opens a temporary chat: nothing is saved (no recent-chats entry, title or question history), and Claude / Codex keep no session on disk. It has its own violet look, like a private window
 - Shift+Enter adds a new line; the input grows with your text (up to about six lines, then scrolls), and line breaks are kept when you send
 
 ## 1.0.0 — omaSearch

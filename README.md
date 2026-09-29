@@ -25,7 +25,7 @@ Based on [omAsk](https://github.com/shabdar/omarchy-ask) by Ali Shabdar.
 - **Recent chats.** Listed under the input when no chat is open, including older omaSearch chats Claude has on disk. Type to filter, ↑/↓ then Enter to open, pin the ones you keep. New chats get a short title.
 - **Images.** Paste one with Ctrl+V, or pick an older one from clipboard history (Super+Ctrl+V).
 - **Copy anything.** Selecting text copies it; a click copies a whole message or code block.
-- **Temporary chats** (Ctrl+I) for a quick question you don't want kept.
+- **Temporary chats** (Ctrl+I) for a quick question you don't want kept, with their own violet look so you always know.
 - **Short or detailed answers**, a model picker and an agent picker.
 - **Liquid-glass look** that follows your Omarchy theme.
 - **Ctrl+H** shows every shortcut.
