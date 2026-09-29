@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Shift+Enter adds a new line; the input grows with your text (up to about six lines, then scrolls), and line breaks are kept when you send
+
 ## 1.0.0 — omaSearch
 
 First release as omaSearch, based on omAsk 1.0.5 by Ali Shabdar.

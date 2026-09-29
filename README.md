@@ -75,6 +75,7 @@ omarchy plugin remove io.github.5h3rd1l.omasearch --yes
 | --- | --- |
 | Super+Q | Open / close |
 | Enter | Ask |
+| Shift+Enter | New line (the input grows with your text) |
 | Ctrl+Enter | Search Google in your default browser |
 | Ctrl+↑ / Ctrl+↓ | Bring back earlier questions |
 | Ctrl+C | Stop the answer (copies instead when text is selected) |

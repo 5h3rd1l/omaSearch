@@ -370,7 +370,7 @@ function parsePrompts(text) {
   var list = data && Array.isArray(data.prompts) ? data.prompts : []
   var out = []
   for (var i = Math.max(0, list.length - 100); i < list.length; i++) {
-    var p = clip(list[i], 2000)
+    var p = clipText(list[i], 2000)
     if (p) out.push(p)
   }
   return out

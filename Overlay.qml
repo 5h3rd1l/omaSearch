@@ -286,6 +286,7 @@ Item {
   readonly property var helpSections: [
     { title: "Chat", items: [
       ["Enter", "Ask " + root.agentName],
+      ["Shift+Enter", "New line"],
       ["Ctrl+Enter", "Search Google in your default browser"],
       ["Ctrl+\u2191 / Ctrl+\u2193", "Bring back earlier questions"],
       ["Ctrl+C", "Stop the answer (copies instead when text is selected)"],
@@ -497,7 +498,7 @@ Item {
       rows.push({ kind: r.rowKind, text: r.rowText, count: r.rowCount,
                   steps: r.rowKind === "tool" ? AskModel.trimSteps(r.rowSteps, 1500) : "[]" })
     }
-    var entry = { id: root.chatId, title: root.chatTitle || AskModel.clip(root.turns[0].q, 120),
+    var entry = { id: root.chatId, title: root.chatTitle || AskModel.clip(root.turns[0].q.replace(/\s+/g, " "), 120),
                   titled: root.chatTitle !== "", agent: root.agentId,
                   updated: Date.now(), sessions: root.chatSessions, turns: root.turns, rows: rows }
     var next = [entry]
@@ -893,7 +894,7 @@ Item {
     // Boot Claude now, while you type. The chat stays until New ^N; a payload
     // prompt only pre-fills the pill.
     root.ensureServe()
-    if (payload.prompt) promptField.text = AskModel.clip(payload.prompt, root.maxPrompt)
+    if (payload.prompt) promptField.text = AskModel.clipText(payload.prompt, root.maxPrompt)
     root.opened = true
     Qt.callLater(function() {
       root.scrollToEnd()
@@ -923,7 +924,7 @@ Item {
 
   function submit() {
     // Run ask.py with the current field text on stdin.
-    var prompt = AskModel.clip(promptField.text || root.promptText || "", root.maxPrompt)
+    var prompt = AskModel.clipText(promptField.text || root.promptText || "", root.maxPrompt).replace(/^\s+|\s+$/g, "")
     if (root.asking) return
     // An image alone still asks something sensible.
     if (!prompt && root.attachImage) prompt = "What is this?"
@@ -1176,7 +1177,9 @@ Item {
   function searchGoogle() {
     // Search the typed question on Google in the default browser (Omarchy's
     // launcher opens it and brings it forward), then close.
-    var query = AskModel.clip(promptField.text || root.promptText || root.askPrompt || "", root.maxPrompt).trim()
+    // One line for Google: line breaks become spaces.
+    var query = AskModel.clip(String(promptField.text || root.promptText || root.askPrompt || "").replace(/\s+/g, " "),
+                              root.maxPrompt).trim()
     if (!query) return
     var url = "https://www.google.com/search?q=" + encodeURIComponent(query)
     Quickshell.execDetached(["omarchy", "launch", "browser", url])
@@ -2552,16 +2555,28 @@ Item {
       id: pill
 
       width: panel.surfaceWidth
-      height: Style.space(76)
+      // One line: 76. Grows with Shift+Enter lines, up to about six, then the
+      // text scrolls inside.
+      height: Math.max(Style.space(76), Math.min(Math.ceil(promptField.contentHeight) + Style.space(52),
+                                                 Style.space(76) + Math.round(promptMetrics.height * 5)))
       x: panel.surfaceX
       y: panel.pillY
-      radius: height / 2
+      radius: Math.min(height / 2, Style.space(38))
       // Glass: a translucent tint the compositor blurs behind; the rim
       // brightens while you type.
       color: Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.55)
       borderSpec: Border.none()
       padding: Style.space(4)
       scale: root.opened ? 1 : 0.96
+
+      FontMetrics {
+        id: promptMetrics
+        font: promptField.font
+      }
+
+      Behavior on height {
+        NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
+      }
 
       GlassSheen {
         radius: pill.radius
@@ -2701,91 +2716,127 @@ Item {
             - parent.spacing * (pillRow.trailWidth > 0 ? 2 : 1)
           height: parent.height
 
-          TextInput {
-            id: promptField
+          // Multi-line: Shift+Enter adds a line, the pill grows up to about six
+          // lines, then this scrolls (wheel / touchpad; mouse drags select).
+          Flickable {
+            id: promptFlick
+
+            function ensureVisible(r) {
+              if (promptFlick.contentY >= r.y) promptFlick.contentY = r.y
+              else if (promptFlick.contentY + promptFlick.height <= r.y + r.height)
+                promptFlick.contentY = r.y + r.height - promptFlick.height
+            }
+
             anchors.fill: parent
-            color: Color.menu.text
-            selectionColor: Color.menu.selectedBackground
-            selectedTextColor: Color.menu.selectedText
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.heading
-            verticalAlignment: TextInput.AlignVCenter
-            selectByMouse: true
+            anchors.topMargin: Style.space(10)
+            anchors.bottomMargin: Style.space(10)
+            contentWidth: width
+            contentHeight: promptField.height
             clip: true
-            maximumLength: root.maxPrompt
+            boundsBehavior: Flickable.StopAtBounds
+            acceptedButtons: Qt.NoButton
 
-            cursorDelegate: Rectangle {
-              width: Math.max(1, Style.space(1))
-              color: Color.accent
-            }
+            TextEdit {
+              id: promptField
+              width: promptFlick.width
+              height: Math.max(promptFlick.height, contentHeight)
+              color: Color.menu.text
+              selectionColor: Color.menu.selectedBackground
+              selectedTextColor: Color.menu.selectedText
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.heading
+              verticalAlignment: TextEdit.AlignVCenter
+              textFormat: TextEdit.PlainText
+              wrapMode: TextEdit.Wrap
+              selectByMouse: true
 
-            onTextChanged: {
-              root.promptText = AskModel.clip(text, root.maxPrompt)
-              root.recentIndex = -1
-            }
+              cursorDelegate: Rectangle {
+                width: Math.max(1, Style.space(1))
+                color: Color.accent
+              }
 
-            Keys.priority: Keys.BeforeItem
+              onCursorRectangleChanged: promptFlick.ensureVisible(cursorRectangle)
 
-            Keys.onPressed: function(event) {
-              var enter = event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-              if (event.key === Qt.Key_Escape) {
-                if (root.menuOpen) root.closeMenus()
-                else root.dismiss()
-                event.accepted = true
-              } else if (enter && (event.modifiers & Qt.ControlModifier)) {
-                root.searchGoogle()
-                event.accepted = true
-              } else if (enter) {
-                root.closeMenus()
-                if (!panel.chatting && root.recentIndex >= 0 && root.recentIndex < root.recentShown.length)
-                  root.openRecent(root.recentShown[root.recentIndex])
-                else
-                  root.submit()
-                event.accepted = true
-              } else if ((event.key === Qt.Key_Up || event.key === Qt.Key_Down)
-                         && (event.modifiers & Qt.ControlModifier)) {
-                root.recallPrompt(event.key === Qt.Key_Up ? -1 : 1)
-                event.accepted = true
-              } else if ((event.key === Qt.Key_Up || event.key === Qt.Key_Down) && panel.showRecent) {
-                root.moveRecent(event.key === Qt.Key_Up ? -1 : 1)
-                event.accepted = true
-              } else if (event.key === Qt.Key_Insert && (event.modifiers & Qt.ShiftModifier) && root.warmAgent) {
-                // Shift+Insert is how the clipboard manager (Super+Ctrl+V)
-                // pastes what you pick, so an older image attaches too.
-                root.pasteClipboard()
-                event.accepted = true
-              } else if (event.modifiers & Qt.ControlModifier) {
-                if (event.key === Qt.Key_E) {
-                  root.openTerminal()
+              onTextChanged: {
+                // TextEdit has no maximumLength: trim anything past the limit.
+                if (text.length > root.maxPrompt) {
+                  var pos = cursorPosition
+                  text = text.slice(0, root.maxPrompt)
+                  cursorPosition = Math.min(pos, text.length)
+                  return
+                }
+                root.promptText = AskModel.clipText(text, root.maxPrompt)
+                root.recentIndex = -1
+              }
+
+              Keys.priority: Keys.BeforeItem
+
+              Keys.onPressed: function(event) {
+                var enter = event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                if (event.key === Qt.Key_Escape) {
+                  if (root.menuOpen) root.closeMenus()
+                  else root.dismiss()
                   event.accepted = true
-                } else if (event.key === Qt.Key_C && promptField.selectedText.length === 0) {
-                  if (!root.copySelection()) root.stopRun()
+                } else if (enter && (event.modifiers & Qt.ShiftModifier)) {
+                  // Shift+Enter: a new line (Enter alone sends).
+                  promptField.remove(promptField.selectionStart, promptField.selectionEnd)
+                  promptField.insert(promptField.cursorPosition, "\n")
                   event.accepted = true
-                } else if (event.key === Qt.Key_V && root.warmAgent) {
+                } else if (enter && (event.modifiers & Qt.ControlModifier)) {
+                  root.searchGoogle()
+                  event.accepted = true
+                } else if (enter) {
+                  root.closeMenus()
+                  if (!panel.chatting && root.recentIndex >= 0 && root.recentIndex < root.recentShown.length)
+                    root.openRecent(root.recentShown[root.recentIndex])
+                  else
+                    root.submit()
+                  event.accepted = true
+                } else if ((event.key === Qt.Key_Up || event.key === Qt.Key_Down)
+                           && (event.modifiers & Qt.ControlModifier)) {
+                  root.recallPrompt(event.key === Qt.Key_Up ? -1 : 1)
+                  event.accepted = true
+                } else if ((event.key === Qt.Key_Up || event.key === Qt.Key_Down) && panel.showRecent) {
+                  root.moveRecent(event.key === Qt.Key_Up ? -1 : 1)
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Insert && (event.modifiers & Qt.ShiftModifier) && root.warmAgent) {
+                  // Shift+Insert is how the clipboard manager (Super+Ctrl+V)
+                  // pastes what you pick, so an older image attaches too.
                   root.pasteClipboard()
                   event.accepted = true
-                } else if (event.key === Qt.Key_H) {
-                  root.toggleHelp()
+                } else if (event.modifiers & Qt.ControlModifier) {
+                  if (event.key === Qt.Key_E) {
+                    root.openTerminal()
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_C && promptField.selectedText.length === 0) {
+                    if (!root.copySelection()) root.stopRun()
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_V && root.warmAgent) {
+                    root.pasteClipboard()
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_H) {
+                    root.toggleHelp()
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_D) {
+                    if (!root.asking) root.setOption("detailed", !root.detailed)
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_N) {
+                    root.newChat()
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_Y) {
+                    root.copyLast()
+                    event.accepted = true
+                  }
+                } else if (event.key === Qt.Key_PageUp) {
+                  root.followTail = false
+                  list.contentY = Math.max(0, list.contentY - list.height * 0.8)
                   event.accepted = true
-                } else if (event.key === Qt.Key_D) {
-                  if (!root.asking) root.setOption("detailed", !root.detailed)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_N) {
-                  root.newChat()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Y) {
-                  root.copyLast()
+                } else if (event.key === Qt.Key_PageDown) {
+                  list.contentY = Math.min(Math.max(0, list.contentHeight - list.height),
+                                           list.contentY + list.height * 0.8)
+                  root.followTail = list.atYEnd
                   event.accepted = true
                 }
-              } else if (event.key === Qt.Key_PageUp) {
-                root.followTail = false
-                list.contentY = Math.max(0, list.contentY - list.height * 0.8)
-                event.accepted = true
-              } else if (event.key === Qt.Key_PageDown) {
-                list.contentY = Math.min(Math.max(0, list.contentHeight - list.height),
-                                         list.contentY + list.height * 0.8)
-                root.followTail = list.atYEnd
-                event.accepted = true
               }
             }
           }
