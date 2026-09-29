@@ -22,6 +22,8 @@ Prints a single JSON object on stdout (capped), then exits.
   --safe           (with --ask / --serve) no command runs unapproved: --serve asks
                    the overlay ({"kind": "approve"} out, {"approve", "allow"} in);
                    --ask denies anything that needs approval
+  --temp           (with --ask / --serve) a temporary chat: Claude and Codex save no
+                   session to disk, and no session id is reported back
 """
 
 from __future__ import annotations
@@ -62,9 +64,10 @@ DETAILED_RULES = """Rules:
 - Ask a question only when the request is ambiguous and a wrong guess would be destructive.
 - If you are unsure, say so and give the best next step."""
 
-# Set from --detailed / --safe (see main).
+# Set from --detailed / --safe / --temp (see main).
 DETAILED = False
 SAFE = False
+TEMP = False
 
 
 def system_prompt() -> str:
@@ -250,6 +253,9 @@ def session_invoke(agent: str, prompt: str, model: str, session: str) -> tuple[l
                  else ["--dangerously-skip-permissions"])
         argv = ["claude", "-p", *model_args, "--output-format", "text", *perms,
                 "--effort", QUICK_EFFORT, "--append-system-prompt", system_prompt()]
+        if TEMP:
+            # Temporary chat: nothing saved, so nothing to resume later.
+            return argv + ["--no-session-persistence"], raw, ""
         argv += ["--resume", sid] if session else ["--session-id", sid]
         return argv, raw, sid
     if agent == "codex":
@@ -258,7 +264,8 @@ def session_invoke(agent: str, prompt: str, model: str, session: str) -> tuple[l
             return ["codex", "exec", "resume", "--json", "--skip-git-repo-check", *sandbox,
                     *model_args, session, "-"], raw, session
         sandbox = ["--sandbox", "read-only"] if SAFE else ["--dangerously-bypass-approvals-and-sandbox"]
-        return ["codex", "exec", "--json", "--skip-git-repo-check", *sandbox, *model_args], wrapped, ""
+        ephemeral = ["--ephemeral"] if TEMP else []
+        return ["codex", "exec", "--json", "--skip-git-repo-check", *sandbox, *ephemeral, *model_args], wrapped, ""
     # opencode
     # The build agent can run commands; --auto approves them (no prompts here).
     # Safe mode uses the read-only plan agent instead.
@@ -618,7 +625,11 @@ def serve(session: str) -> None:
     model = selected_model("claude")
     if model:
         argv += ["--model", model]
-    argv += ["--resume", sid] if session else ["--session-id", sid]
+    if TEMP:
+        # Temporary chat: the session lives only in this process.
+        argv += ["--no-session-persistence"]
+    else:
+        argv += ["--resume", sid] if session else ["--session-id", sid]
     env = {k: os.environ[k] for k in CHILD_ENV_KEYS if k in os.environ}
     proc = subprocess.Popen(login_argv(argv), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, start_new_session=True, env=env)
@@ -651,7 +662,7 @@ def serve(session: str) -> None:
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    out({"kind": "ready", "agent": "claude", "session": sid})
+    out({"kind": "ready", "agent": "claude", "session": "" if TEMP else sid})
 
     def pump() -> None:
         # Claude's stream-json events → the overlay's small event set.
@@ -711,7 +722,7 @@ def serve(session: str) -> None:
                          "error": text or "Claude did not return an answer."})
                 else:
                     out({"kind": "done", "ok": True, "agent": "claude", "summary": text,
-                         "session": str(ev.get("session_id") or sid)})
+                         "session": "" if TEMP else str(ev.get("session_id") or sid)})
         err = (proc.stderr.read() or b"").decode("utf-8", "replace").strip()[-300:]
         if looks_like_auth_error(err):
             err = "Sign in to Claude, then try again."
@@ -1007,18 +1018,22 @@ def ask_agent(provider: dict, prompt: str, session: str = "") -> None:
     summary = tidy_stream(stdout)
     if not summary:
         emit(result(provider, code="failed", error=f"{name} returned an empty answer."))
-    emit(result(provider, ok=True, summary=summary, session=sid if SESSION_RE.fullmatch(sid or "") else ""))
+    keep = not TEMP and SESSION_RE.fullmatch(sid or "")
+    emit(result(provider, ok=True, summary=summary, session=sid if keep else ""))
 
 
 def main(argv: list[str]) -> None:
     """Dispatch `--list`, `--info` or `--ask` for the chosen or default agent."""
-    global DETAILED, SAFE
+    global DETAILED, SAFE, TEMP
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
     DETAILED = "--detailed" in argv
     SAFE = "--safe" in argv
-    argv = [a for a in argv if a not in ("--detailed", "--safe")]
+    TEMP = "--temp" in argv
+    argv = [a for a in argv if a not in ("--detailed", "--safe", "--temp")]
     if argv[:1] == ["--serve"]:
         sid = argv[2] if len(argv) == 3 and argv[1] == "--session" and SESSION_RE.fullmatch(argv[2]) else ""
+        if TEMP:
+            sid = ""
         os.chdir(os.path.expanduser("~"))
         serve(sid)
         return

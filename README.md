@@ -25,6 +25,7 @@ Based on [omAsk](https://github.com/shabdar/omarchy-ask) by Ali Shabdar.
 - **Recent chats.** Listed under the input when no chat is open, including older omaSearch chats Claude has on disk. Type to filter, ↑/↓ then Enter to open, pin the ones you keep. New chats get a short title.
 - **Images.** Paste one with Ctrl+V, or pick an older one from clipboard history (Super+Ctrl+V).
 - **Copy anything.** Selecting text copies it; a click copies a whole message or code block.
+- **Temporary chats** (Ctrl+I) for a quick question you don't want kept.
 - **Short or detailed answers**, a model picker and an agent picker.
 - **Liquid-glass look** that follows your Omarchy theme.
 - **Ctrl+H** shows every shortcut.
@@ -80,6 +81,7 @@ omarchy plugin remove io.github.5h3rd1l.omasearch --yes
 | Ctrl+↑ / Ctrl+↓ | Bring back earlier questions |
 | Ctrl+C | Stop the answer (copies instead when text is selected) |
 | Ctrl+N | New chat |
+| Ctrl+I | Temporary chat: nothing is saved, and it stays out of recent chats (Ctrl+I again ends it) |
 | Ctrl+E | Continue the chat in the terminal (Claude, Codex, OpenCode) |
 | Ctrl+Y | Copy the last answer |
 | Ctrl+D | Short or detailed answers |
@@ -103,6 +105,7 @@ For other agents, safe mode keeps Codex in its read-only sandbox and OpenCode on
 - **Claude chats** also come from Claude's own session files (omaSearch's print-mode sessions in `~/.claude/projects/<your home>/`). Removing a chat from the list only hides it; Claude's file stays.
 - **Pasted images** go to `~/.cache/omasearch/shots` and are deleted once sent (unsent ones after an hour).
 - **Titles** for new chats come from one quick Claude Haiku call per chat, with no saved session.
+- **Temporary chats** (Ctrl+I) aren't saved anywhere by omaSearch: no recent-chats entry, no title, no question history. Claude and Codex run without saving the session either. OpenCode has no such option and keeps its own log.
 
 Nothing is sent anywhere except to the agent you ask.
 

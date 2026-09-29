@@ -278,6 +278,9 @@ Item {
   readonly property bool menuOpen: root.pickerOpen || root.modelPickerOpen || root.helpOpen
   // Ctrl+H: every shortcut and mouse action, in one panel.
   property bool helpOpen: false
+  // Ctrl+I: a temporary chat. Nothing about it is kept: no recent-chats entry,
+  // no title, no question history, and Claude / Codex save no session.
+  property bool tempChat: false
   // A short confirmation that pops up over the pill when a shortcut (or a
   // switch, a copy...) does something; StyledText, so words can be tinted.
   property string toastText: ""
@@ -291,6 +294,7 @@ Item {
       ["Ctrl+\u2191 / Ctrl+\u2193", "Bring back earlier questions"],
       ["Ctrl+C", "Stop the answer (copies instead when text is selected)"],
       ["Ctrl+N", "New chat"],
+      ["Ctrl+I", "Temporary chat: nothing is saved, and it stays out of recent chats"],
       ["Ctrl+E", "Continue this chat in the terminal"],
       ["Page Up / Down", "Scroll the chat"],
       ["Esc", "Close a menu, then omaSearch (the chat stays until New)"]
@@ -325,6 +329,7 @@ Item {
   property bool detailed: false
   property bool safeMode: true
   readonly property var modeArgs: (root.detailed ? ["--detailed"] : []).concat(root.safeMode ? ["--safe"] : [])
+    .concat(root.tempChat ? ["--temp"] : [])
   property int pendingApprovals: 0
 
   // An image for the next message (pasted with Ctrl+V; Claude only). It lives
@@ -490,7 +495,8 @@ Item {
   function saveChat() {
     // Put this chat at the top of the recent list, with the rows as shown
     // (reopening looks the same) and its session ids (so it can resume).
-    if (!root.turns.length) return
+    // A temporary chat is never saved.
+    if (root.tempChat || !root.turns.length) return
     if (!root.chatId) root.chatId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
     var rows = []
     for (var i = 0; i < rowsModel.count; i++) {
@@ -545,7 +551,7 @@ Item {
 
   function requestTitle() {
     // Name this chat from its first question and answer, once.
-    if (root.chatTitle || titleProc.running || !root.turns.length || !root.turns[0].a) return
+    if (root.tempChat || root.chatTitle || titleProc.running || !root.turns.length || !root.turns[0].a) return
     root.titleFor = root.chatId
     root.titleBuf = ""
     root.titlePayload = JSON.stringify({ q: root.turns[0].q, a: root.turns[0].a })
@@ -572,6 +578,7 @@ Item {
   }
 
   function rememberPrompt(text) {
+    if (root.tempChat) return
     var list = root.promptHistory.filter(function(p) { return p !== text })
     list.push(text)
     root.promptHistory = list.slice(-100)
@@ -641,6 +648,7 @@ Item {
     root.closeMenus()
     root.stopRun()
     root.resetQuery()
+    root.tempChat = false
     root.chatId = entry.id
     root.chatTitle = entry.titled ? entry.title : ""
     root.turns = entry.turns
@@ -807,7 +815,8 @@ Item {
   function ensureServe() {
     // Start the warm Claude process (resuming this chat's session if any).
     if (!root.warmAgent || serveProc.running) return
-    var sid = root.chatSessions["claude"] || ""
+    // A temporary chat never resumes a saved session (there is none).
+    var sid = root.tempChat ? "" : (root.chatSessions["claude"] || "")
     root.serveUsed = sid !== ""
     serveProc.command = ["/usr/bin/python3", "-I", "-S", root.askScript, "--serve"]
       .concat(sid ? ["--session", sid] : []).concat(root.modeArgs)
@@ -1130,8 +1139,9 @@ Item {
   }
 
   function newChat() {
-    // Ctrl+N / New: forget this chat and its sessions.
+    // Ctrl+N / New: forget this chat and its sessions (and leave a temporary chat).
     root.closeMenus()
+    root.tempChat = false
     root.resetQuery()
     root.restartServe()
     promptField.text = ""
@@ -1140,6 +1150,24 @@ Item {
     root.followTail = true
     root.refreshRecent()
     root.toast("New chat")
+    promptField.forceActiveFocus()
+  }
+
+  function toggleTemp() {
+    // Ctrl+I: start a temporary chat, or end the one you're in and start a
+    // normal one. The temporary chat is gone once it ends.
+    var on = !root.tempChat
+    root.closeMenus()
+    root.resetQuery()
+    root.tempChat = on
+    root.restartServe()
+    promptField.text = ""
+    root.askStartedAt = 0
+    root.elapsedMs = 0
+    root.followTail = true
+    if (!on) root.refreshRecent()
+    root.toast(on ? '<font color="' + String(Color.accent) + '">\uf21b</font>  Temporary chat \u00b7 nothing is saved'
+                  : "Temporary chat ended")
     promptField.forceActiveFocus()
   }
 
@@ -1188,6 +1216,7 @@ Item {
 
   function openTerminal() {
     // Continue this chat's session in the agent's TUI, in $HOME where it was created.
+    if (root.tempChat) return
     var sid = root.currentSession
     var agent = AskModel.normalizeAgent(root.agentId)
     var cmd = agent === "claude" ? ["claude", "--resume", sid]
@@ -1782,7 +1811,7 @@ Item {
                  panel.cardMax)
       : 0
     // No chat open: recent chats hang under the hint bar.
-    readonly property bool showRecent: !panel.chatting && root.recentShown.length > 0
+    readonly property bool showRecent: !panel.chatting && !root.tempChat && root.recentShown.length > 0
     readonly property int above: panel.chatting ? panel.cardTarget + panel.gap : 0
     // The hint / action bar under the pill.
     readonly property int below: hints.height + Style.space(8)
@@ -1898,6 +1927,23 @@ Item {
                 : root.chatState === "failed" ? "Failed"
                 : root.chatState === "done" ? "Done" : ""
               color: root.chatState === "failed" ? Color.urgent : root.subtle
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            // Marks a temporary chat (Ctrl+I): nothing here is saved.
+            Text {
+              visible: root.tempChat
+              text: "·"
+              color: root.subtle
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            Text {
+              visible: root.tempChat
+              text: "\uf21b  Temporary"
+              color: Color.accent
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
             }
@@ -2814,7 +2860,10 @@ Item {
                   } else if (event.key === Qt.Key_V && root.warmAgent) {
                     root.pasteClipboard()
                     event.accepted = true
-                  } else if (event.key === Qt.Key_H) {
+                  } else if (event.key === Qt.Key_I) {
+                  root.toggleTemp()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_H) {
                     root.toggleHelp()
                     event.accepted = true
                   } else if (event.key === Qt.Key_D) {
@@ -2844,7 +2893,9 @@ Item {
           Text {
             anchors.fill: parent
             visible: promptField.text.length === 0
-            text: panel.chatting ? "Follow up…" : root.placeholder
+            text: root.tempChat
+              ? (panel.chatting ? "Follow up (temporary)…" : "Temporary chat: nothing is saved")
+              : (panel.chatting ? "Follow up…" : root.placeholder)
             color: Color.menu.text
             opacity: 0.44
             font.family: root.fontFamily
@@ -3020,6 +3071,17 @@ Item {
         }
 
         Button {
+          text: "Temporary ^I"
+          tooltipText: "Ctrl+I \u2014 a chat that isn't saved anywhere"
+          selected: root.tempChat
+          fontSize: Style.font.caption
+          foreground: root.tempChat ? Color.accent : root.note
+          horizontalPadding: Style.space(7)
+          verticalPadding: Style.space(3)
+          onClicked: root.toggleTemp()
+        }
+
+        Button {
           text: "Help ^H"
           tooltipText: "Ctrl+H \u2014 all shortcuts"
           selected: root.helpOpen
@@ -3041,7 +3103,7 @@ Item {
         Button {
           text: "Terminal ^E"
           tooltipText: "Ctrl+E \u2014 continue this chat in the terminal"
-          visible: root.currentSession !== "" && !root.asking
+          visible: root.currentSession !== "" && !root.asking && !root.tempChat
           fontSize: Style.font.caption
           foreground: root.note
           horizontalPadding: Style.space(7)
