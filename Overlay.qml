@@ -1560,26 +1560,29 @@ Item {
 
   // Ctrl+V: save a clipboard image (PNG / JPEG / WebP / GIF, or a copied
   // image file) into the private folder and print IMG:<path>; BIG if it is
-  // over Claude's 5 MB limit; TEXT when there is no image to take.
+  // over Claude's 5 MB limit; TEXT when there is no image to take. The folder
+  // is checked first (ask.py --prepare: private, no symlinks) and each image
+  // gets a fresh mktemp file, never a predictable name.
   Process {
     id: pasteProc
     command: ["/usr/bin/bash", "--noprofile", "--norc", "-c",
-      'umask 077; d="$1"; mkdir -p "$d" && find "$d" -name "shot-*" -mmin +60 -delete; '
+      'umask 077; d="$1"; /usr/bin/python3 -I -S "$2" --prepare >/dev/null 2>&1 || { echo TEXT; exit 0; }; '
+      + 'find "$d" -maxdepth 1 -name "shot-*" -mmin +60 -delete; '
       + 'types=$(wl-paste --list-types 2>/dev/null) || { echo TEXT; exit 0; }; '
       + 'save() { s=$(stat -c %s "$1"); if [ "$s" -gt 5242880 ]; then rm -f "$1"; echo BIG; exit 0; fi; printf "IMG:%s" "$1"; exit 0; }; '
       + 'for t in image/png image/jpeg image/webp image/gif; do '
       + '  if printf "%s\\n" "$types" | grep -qx "$t"; then '
-      + '    e=${t#image/}; [ "$e" = jpeg ] && e=jpg; f="$d/shot-$(date +%s%N).$e"; '
+      + '    e=${t#image/}; [ "$e" = jpeg ] && e=jpg; f=$(mktemp --suffix=".$e" "$d/shot-XXXXXXXXXX") || { echo TEXT; exit 0; }; '
       + '    wl-paste --type "$t" > "$f" 2>/dev/null && save "$f"; rm -f "$f"; echo TEXT; exit 0; '
       + '  fi; '
       + 'done; '
       + 'if printf "%s\\n" "$types" | grep -qx "text/uri-list"; then '
       + '  u=$(wl-paste --type text/uri-list 2>/dev/null | tr -d "\\r" | grep -m1 "^file://"); p=${u#file://}; '
       + '  p=$(printf "%b" "${p//%/\\\\x}"); e=${p##*.}; e=$(printf "%s" "$e" | tr "A-Z" "a-z"); [ "$e" = jpeg ] && e=jpg; '
-      + '  case "$e" in png|jpg|webp|gif) if [ -f "$p" ]; then f="$d/shot-$(date +%s%N).$e"; cp -- "$p" "$f" && save "$f"; fi;; esac; '
+      + '  case "$e" in png|jpg|webp|gif) if [ -f "$p" ]; then f=$(mktemp --suffix=".$e" "$d/shot-XXXXXXXXXX") && cp -- "$p" "$f" && save "$f"; rm -f "$f"; fi;; esac; '
       + 'fi; '
       + 'echo TEXT',
-      "omasearch", root.shotsDir]
+      "omasearch", root.shotsDir, root.askScript]
     stdout: SplitParser {
       splitMarker: ""
       onRead: function(chunk) { if (root.pasteBuf.length < 4096) root.pasteBuf += chunk }
@@ -1780,9 +1783,9 @@ Item {
 
   onAskScriptChanged: root.refreshAgent()
   Component.onCompleted: {
-    // Chat history and settings live here: private to you (0700).
-    Quickshell.execDetached(["/usr/bin/bash", "--noprofile", "--norc", "-c", 'mkdir -p -m 700 "$1" && chmod 700 "$1"',
-      "omasearch", Quickshell.env("HOME") + "/.local/state/omasearch"])
+    // Chat history, settings and pasted images live in private folders
+    // (0700). ask.py creates / checks them without following symlinks.
+    Quickshell.execDetached(["/usr/bin/python3", "-I", "-S", root.askScript, "--prepare"])
     root.refreshAgent()
     root.refreshAgents()
   }

@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
+- Security: omaSearch's folders (`~/.local/state/omasearch`, `~/.cache/omasearch`) are created and made private without ever following a symlink (opened with `O_NOFOLLOW`, then `fchmod`), and folders you don't own are refused
+- Security: settings and the model cache are written through a fresh temp file with a random name (`mkstemp`) and renamed into place, so a planted link can't redirect a write; pasted images get `mktemp` names
 - Ctrl+I opens a temporary chat: nothing is saved (no recent-chats entry, title or question history), and Claude / Codex keep no session on disk. It has its own violet look, like a private window
 - Shift+Enter adds a new line; the input grows with your text (up to about six lines, then scrolls), and line breaks are kept when you send
 

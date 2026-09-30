@@ -12,6 +12,7 @@ Prints a single JSON object on stdout (capped), then exits.
                    (ready / delta / done / exit), streamed as Claude writes
   ask.py --models <agent>              models the model menu offers for <agent>
   ask.py --select-model <agent> <model>  remember <model> for <agent> ("" = CLI default)
+  ask.py --prepare            create / check omaSearch's private folders (0700, no symlinks)
   ask.py --title              short title for a chat; {"q", "a"} JSON on stdin
   ask.py --recent-claude       omaSearch's recent Claude chats (its print-mode sessions in $HOME)
   ask.py --load-claude <id>    one of those chats rebuilt as overlay rows, to reopen it
@@ -34,6 +35,7 @@ import os
 import re
 import signal
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -118,9 +120,10 @@ SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 ASK_TIMEOUT_SEC = 600
 AGENT_FILE = os.path.expanduser("~/.config/omarchy/defaults/agent")
 # omaSearch's own choice from the logo menu; wins over the system default.
-SELECTED_FILE = os.path.expanduser("~/.local/state/omasearch/agent")
+STATE_DIR = os.path.expanduser("~/.local/state/omasearch")
+SELECTED_FILE = os.path.join(STATE_DIR, "agent")
 # Model menu choice per agent, e.g. {"claude": "sonnet"}; missing = the CLI's default.
-MODELS_FILE = os.path.expanduser("~/.local/state/omasearch/models.json")
+MODELS_FILE = os.path.join(STATE_DIR, "models.json")
 MODELS_CACHE_DIR = os.path.expanduser("~/.cache/omasearch")
 MODELS_CACHE_SEC = 24 * 3600
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$")
@@ -405,14 +408,57 @@ def selected_agent() -> str:
     return ""
 
 
+def private_dir(path: str) -> str:
+    """Make sure path is a real directory, owned by us and private (0700).
+
+    Never follows a symlink: the directory is opened with O_NOFOLLOW and its
+    mode is set through that handle, so a planted link makes this fail instead
+    of changing permissions somewhere else.
+    """
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        pass
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        if os.fstat(fd).st_uid != os.getuid():
+            raise PermissionError(f"{path} is not owned by you")
+        os.fchmod(fd, 0o700)
+    finally:
+        os.close(fd)
+    return path
+
+
+def write_private(path: str, text: str) -> None:
+    """Replace path with text: write a fresh temp file (random name, O_EXCL) in
+    the same private folder, then rename it into place. Nothing existing, and
+    no link, is ever opened for writing."""
+    folder = private_dir(os.path.dirname(path))
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix="." + os.path.basename(path) + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def prepare_dirs() -> None:
+    """omaSearch's own folders, all private: state, cache, pasted images."""
+    private_dir(STATE_DIR)
+    private_dir(MODELS_CACHE_DIR)
+    private_dir(SHOTS_DIR)
+
+
 def save_selected(agent: str) -> bool:
     """Remember the logo-menu choice across overlay opens and restarts."""
     try:
-        os.makedirs(os.path.dirname(SELECTED_FILE), mode=0o700, exist_ok=True)
-        tmp = SELECTED_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            fh.write(agent + "\n")
-        os.replace(tmp, SELECTED_FILE)
+        write_private(SELECTED_FILE, agent + "\n")
     except OSError:
         return False
     return True
@@ -442,11 +488,7 @@ def save_model(agent: str, model: str) -> bool:
     else:
         data.pop(agent, None)
     try:
-        os.makedirs(os.path.dirname(MODELS_FILE), mode=0o700, exist_ok=True)
-        tmp = MODELS_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh)
-        os.replace(tmp, MODELS_FILE)
+        write_private(MODELS_FILE, json.dumps(data))
     except OSError:
         return False
     return True
@@ -490,10 +532,7 @@ def models_for(agent: str) -> list[dict]:
     if not models:
         return cached or []
     try:
-        os.makedirs(MODELS_CACHE_DIR, mode=0o700, exist_ok=True)
-        with open(cache + ".tmp", "w", encoding="utf-8") as fh:
-            json.dump(models, fh)
-        os.replace(cache + ".tmp", cache)
+        write_private(cache, json.dumps(models))
     except OSError:
         pass
     return models
@@ -1037,10 +1076,18 @@ def main(argv: list[str]) -> None:
         os.chdir(os.path.expanduser("~"))
         serve(sid)
         return
+    if argv[:1] == ["--prepare"]:
+        try:
+            prepare_dirs()
+        except OSError as err:
+            emit({"ok": False, "error": str(err)[:200]}, 1)
+        emit({"ok": True})
     if argv[:1] == ["--title"]:
         # Run away from $HOME's session folder, just in case.
-        os.makedirs(MODELS_CACHE_DIR, mode=0o700, exist_ok=True)
-        os.chdir(MODELS_CACHE_DIR)
+        try:
+            os.chdir(private_dir(MODELS_CACHE_DIR))
+        except OSError:
+            emit({"ok": False, "title": ""})
         emit({"ok": True, "title": make_title()})
     if argv[:1] == ["--recent-claude"]:
         emit({"ok": True, "chats": recent_claude()})

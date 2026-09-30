@@ -11,7 +11,7 @@ Quick AI search for [Omarchy](https://omarchy.org/). Press a key, ask, keep work
 
 omaSearch opens a glass overlay over whatever you're doing, sends your question to Claude (or your default agent: Codex, OpenCode, Gemini, Grok, Crush, Pi), and shows the answer right there, formatted. Follow up in the same chat, reopen a recent one, paste an image, and approve the commands Claude wants to run.
 
-**Plugin id:** `io.github.5h3rd1l.omasearch` · **License:** MIT · **Version:** 1.0.0
+**Plugin id:** `io.github.5h3rd1l.omasearch` · **License:** MIT · **Version:** 1.1.0
 
 Based on [omAsk](https://github.com/shabdar/omarchy-ask) by Ali Shabdar.
 
