@@ -13,6 +13,8 @@ Prints a single JSON object on stdout (capped), then exits.
   ask.py --models <agent>              models the model menu offers for <agent>
   ask.py --select-model <agent> <model>  remember <model> for <agent> ("" = CLI default)
   ask.py --prepare            create / check omaSearch's private folders (0700, no symlinks)
+  ask.py --save <name>        write one of the overlay's state files (JSON on stdin)
+                              through the checked folder: history / settings / position
   ask.py --title              short title for a chat; {"q", "a"} JSON on stdin
   ask.py --recent-claude       omaSearch's recent Claude chats (its print-mode sessions in $HOME)
   ask.py --load-claude <id>    one of those chats rebuilt as overlay rows, to reopen it
@@ -35,7 +37,7 @@ import os
 import re
 import signal
 import subprocess
-import tempfile
+import secrets
 import threading
 import time
 import uuid
@@ -124,6 +126,9 @@ STATE_DIR = os.path.expanduser("~/.local/state/omasearch")
 SELECTED_FILE = os.path.join(STATE_DIR, "agent")
 # Model menu choice per agent, e.g. {"claude": "sonnet"}; missing = the CLI's default.
 MODELS_FILE = os.path.join(STATE_DIR, "models.json")
+# Files the overlay saves through `ask.py --save` (JSON on stdin).
+STATE_FILES = ("history.json", "settings.json", "position.json")
+MAX_STATE_BYTES = 16 * 1024 * 1024
 MODELS_CACHE_DIR = os.path.expanduser("~/.cache/omasearch")
 MODELS_CACHE_SEC = 24 * 3600
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$")
@@ -408,12 +413,13 @@ def selected_agent() -> str:
     return ""
 
 
-def private_dir(path: str) -> str:
-    """Make sure path is a real directory, owned by us and private (0700).
+def open_private_dir(path: str) -> int:
+    """Open path as a real directory owned by us, made private (0700); return
+    its descriptor.
 
     Never follows a symlink: the directory is opened with O_NOFOLLOW and its
     mode is set through that handle, so a planted link makes this fail instead
-    of changing permissions somewhere else.
+    of changing permissions (or receiving files) somewhere else.
     """
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
@@ -425,27 +431,51 @@ def private_dir(path: str) -> str:
         if os.fstat(fd).st_uid != os.getuid():
             raise PermissionError(f"{path} is not owned by you")
         os.fchmod(fd, 0o700)
-    finally:
+    except BaseException:
         os.close(fd)
+        raise
+    return fd
+
+
+def private_dir(path: str) -> str:
+    """Make sure path is a real, private directory of ours (see open_private_dir)."""
+    os.close(open_private_dir(path))
     return path
 
 
 def write_private(path: str, text: str) -> None:
-    """Replace path with text: write a fresh temp file (random name, O_EXCL) in
-    the same private folder, then rename it into place. Nothing existing, and
-    no link, is ever opened for writing."""
-    folder = private_dir(os.path.dirname(path))
-    fd, tmp = tempfile.mkstemp(dir=folder, prefix="." + os.path.basename(path) + ".", suffix=".tmp")
+    """Replace path with text inside its private folder.
+
+    Everything happens relative to the folder's verified descriptor: a fresh
+    temp file (random name, O_CREAT | O_EXCL | O_NOFOLLOW) is written, then
+    renamed over the target. No existing file or link is ever opened for
+    writing, and the folder can't be swapped between the check and the write.
+    """
+    folder, name = os.path.split(path)
+    dfd = open_private_dir(folder)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
-        os.replace(tmp, path)
-    except BaseException:
+        for _ in range(16):
+            tmp = "." + name + "." + secrets.token_hex(6) + ".tmp"
+            try:
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                             0o600, dir_fd=dfd)
+                break
+            except FileExistsError:
+                continue
+        else:
+            raise FileExistsError("could not create a temporary file")
         try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(text)
+            os.replace(tmp, name, src_dir_fd=dfd, dst_dir_fd=dfd)
+        except BaseException:
+            try:
+                os.unlink(tmp, dir_fd=dfd)
+            except OSError:
+                pass
+            raise
+    finally:
+        os.close(dfd)
 
 
 def prepare_dirs() -> None:
@@ -1076,11 +1106,27 @@ def main(argv: list[str]) -> None:
         os.chdir(os.path.expanduser("~"))
         serve(sid)
         return
+    if len(argv) == 2 and argv[0] == "--save":
+        # The overlay's own state files, written only through write_private.
+        if argv[1] not in STATE_FILES:
+            emit({"ok": False, "error": "Unknown state file."}, 2)
+        raw = read_stdin_prompt(MAX_STATE_BYTES)
+        try:
+            text = raw.decode("utf-8", "strict")
+            json.loads(text)
+            write_private(os.path.join(STATE_DIR, argv[1]), text)
+        except (UnicodeDecodeError, ValueError, OSError) as err:
+            emit({"ok": False, "error": str(err)[:200]}, 1)
+        emit({"ok": True})
     if argv[:1] == ["--prepare"]:
         try:
             prepare_dirs()
         except OSError as err:
-            emit({"ok": False, "error": str(err)[:200]}, 1)
+            links = [d for d in (STATE_DIR, MODELS_CACHE_DIR, SHOTS_DIR) if os.path.islink(d)]
+            home = os.path.expanduser("~")
+            msg = (f"{links[0].replace(home, '~', 1)} is a symlink; omaSearch only uses a real folder of yours"
+                   if links else str(err))
+            emit({"ok": False, "error": msg[:200]}, 1)
         emit({"ok": True})
     if argv[:1] == ["--title"]:
         # Run away from $HOME's session folder, just in case.

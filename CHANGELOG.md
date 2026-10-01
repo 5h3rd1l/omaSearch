@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+
+- Security: the overlay no longer writes its state files (`history.json`, `settings.json`, `position.json`) itself. Every write goes through `ask.py --save`, which checks the folder each time and writes relative to its verified descriptor (temp file with `O_EXCL | O_NOFOLLOW`, then rename), so a symlinked state folder can't redirect a write
+- The state files are read only after `ask.py --prepare` has confirmed the folder is a real, private folder of yours; if it isn't, omaSearch saves nothing and says why
+
 ## 1.1.0
 
 - Security: omaSearch's folders (`~/.local/state/omasearch`, `~/.cache/omasearch`) are created and made private without ever following a symlink (opened with `O_NOFOLLOW`, then `fchmod`), and folders you don't own are refused

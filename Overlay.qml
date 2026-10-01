@@ -249,6 +249,15 @@ Item {
   // live in history.json (the folder is private to you, 0700); omaSearch's Claude
   // chats are also read from Claude's own session files.
   readonly property string historyPath: Quickshell.env("HOME") + "/.local/state/omasearch/history.json"
+  // The state folder is checked by ask.py --prepare (a real, private folder of
+  // yours, no symlinks) before anything in it is read. Every write goes
+  // through ask.py --save, which checks it again; nothing is written here.
+  property bool stateReady: false
+  property string stateProblem: ""
+  property var pendingSaves: ({})   // file name -> JSON waiting for the writer
+  property string saveName: ""
+  property string savePayload: ""
+  property string prepareBuf: ""
   readonly property int maxHistory: 25
   property var history: []      // newest first: { id, title, agent, updated, sessions, turns, rows }
   property string chatId: ""    // this chat's entry in `history`
@@ -534,8 +543,31 @@ Item {
 
   function writeHistory(chats) {
     root.history = chats
-    historyFile.setText(JSON.stringify({ version: 1, chats: chats, hidden: root.hiddenSessions,
-                                         pinned: root.pinnedIds, prompts: root.promptHistory }) + "\n")
+    root.saveState("history.json", JSON.stringify({ version: 1, chats: chats, hidden: root.hiddenSessions,
+                                                    pinned: root.pinnedIds, prompts: root.promptHistory }) + "\n")
+  }
+
+  function saveState(name, text) {
+    // Queue a state file for ask.py --save; a newer save of the same file
+    // replaces one still waiting.
+    var next = {}
+    for (var k in root.pendingSaves) next[k] = root.pendingSaves[k]
+    next[name] = text
+    root.pendingSaves = next
+    root.flushSaves()
+  }
+
+  function flushSaves() {
+    if (saveProc.running) return
+    for (var name in root.pendingSaves) {
+      var rest = {}
+      for (var k in root.pendingSaves) if (k !== name) rest[k] = root.pendingSaves[k]
+      root.saveName = name
+      root.savePayload = root.pendingSaves[name]
+      root.pendingSaves = rest
+      saveProc.running = true
+      return
+    }
   }
 
   function togglePin(item) {
@@ -751,7 +783,7 @@ Item {
     // with them (the chat's session resumes).
     if (root[name] === value) return
     root[name] = value
-    settingsFile.setText(JSON.stringify({ detailed: root.detailed, safe: root.safeMode }) + "\n")
+    root.saveState("settings.json", JSON.stringify({ detailed: root.detailed, safe: root.safeMode }) + "\n")
     root.restartServe()
     var label = name === "detailed" ? "Detailed answers" : "Safe mode"
     root.toast(label + '  <font color="' + (value ? String(Color.accent) : String(Color.urgent)) + '">'
@@ -907,6 +939,8 @@ Item {
     var payload = ({})
     try { payload = JSON.parse(AskModel.clip(payloadJson || "{}", 4096)) } catch (e) { payload = ({}) }
     root.closeMenus()
+    if (root.stateProblem) root.toast('<font color="' + String(Color.urgent) + '">Not saving chats or settings</font>: '
+                                      + AskModel.escapeHtml(root.stateProblem))
     root.refreshAgent()
     root.refreshAgents()
     root.refreshModels()
@@ -1184,7 +1218,7 @@ Item {
   }
 
   function savePosition() {
-    positionFile.setText(JSON.stringify({ dragX: root.dragX, dragY: root.dragY }) + "\n")
+    root.saveState("position.json", JSON.stringify({ dragX: root.dragX, dragY: root.dragY }) + "\n")
   }
 
   function notifyDone() {
@@ -1527,6 +1561,42 @@ Item {
     onTriggered: root.copied = false
   }
 
+  Process {
+    id: prepareProc
+    command: ["/usr/bin/python3", "-I", "-S", root.askScript, "--prepare"]
+    stdout: SplitParser {
+      splitMarker: ""
+      onRead: function(chunk) { if (root.prepareBuf.length < 4096) root.prepareBuf += chunk }
+    }
+    onExited: {
+      var data = null
+      try { data = JSON.parse(root.prepareBuf) } catch (e) {}
+      if (data && data.ok === true) {
+        root.stateReady = true
+        root.stateProblem = ""
+      } else {
+        root.stateProblem = AskModel.clip((data && data.error) || "~/.local/state/omasearch isn't a private folder of yours", 160)
+        console.warn("omaSearch: state folder check failed: " + root.stateProblem)
+      }
+      root.prepareBuf = ""
+    }
+  }
+
+  // Writes one state file at a time (see saveState).
+  Process {
+    id: saveProc
+    command: ["/usr/bin/python3", "-I", "-S", root.askScript, "--save", root.saveName]
+    stdinEnabled: true
+    onStarted: {
+      saveProc.write(root.savePayload)
+      saveProc.stdinEnabled = false
+    }
+    onExited: {
+      saveProc.stdinEnabled = true
+      Qt.callLater(root.flushSaves)
+    }
+  }
+
   FileView {
     id: themeColorsFile
     path: root.themeColorsPath
@@ -1546,7 +1616,7 @@ Item {
 
   FileView {
     id: settingsFile
-    path: root.settingsPath
+    path: root.stateReady ? root.settingsPath : ""
     atomicWrites: true
     printErrors: false
     onLoaded: {
@@ -1603,7 +1673,7 @@ Item {
 
   FileView {
     id: historyFile
-    path: root.historyPath
+    path: root.stateReady ? root.historyPath : ""
     atomicWrites: true
     printErrors: false
     onLoaded: {
@@ -1676,7 +1746,7 @@ Item {
 
   FileView {
     id: positionFile
-    path: root.positionPath
+    path: root.stateReady ? root.positionPath : ""
     atomicWrites: true
     printErrors: false
     onLoaded: {
@@ -1784,8 +1854,9 @@ Item {
   onAskScriptChanged: root.refreshAgent()
   Component.onCompleted: {
     // Chat history, settings and pasted images live in private folders
-    // (0700). ask.py creates / checks them without following symlinks.
-    Quickshell.execDetached(["/usr/bin/python3", "-I", "-S", root.askScript, "--prepare"])
+    // (0700). ask.py creates / checks them without following symlinks; the
+    // state files are read only once that check has passed.
+    prepareProc.running = true
     root.refreshAgent()
     root.refreshAgents()
   }
